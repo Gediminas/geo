@@ -1,1 +1,1 @@
-gcc -O3 geo.c -o geo
+gcc -O3 ./src/main.c -o geo
