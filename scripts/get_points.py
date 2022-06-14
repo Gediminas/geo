@@ -87,7 +87,7 @@ def send_lookup_command(process, ip):
     """Send command to the process under test to perform geolocation loookup"""
     result, time, memory_usage = send_command(process, "LOOKUP " + ip)
 
-    tokens = result.strip().split(',')
+    tokens = result.strip().split(',', 2)
     if len(tokens) != 2:
         raise Exception(f'Invalid response - "{result}"')
 
