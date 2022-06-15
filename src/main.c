@@ -4,9 +4,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#define MAX_CMD_LEN 50
+
 unsigned char* buffer = NULL;
 int loaded = 0;
-char command[25];
+char command[MAX_CMD_LEN];
 const int DB_SIZE = 13193167;
 const unsigned long seg1_start = 4;
 const unsigned long seg1_size  = 256 * 256 * 8; //All combinations of IP octet1 & octet2
@@ -74,7 +76,7 @@ int main(int argc, char** argv) {
         const char *db_path = argv[1];
         const int bytes = LoadDatabase(db_path, buffer, DB_SIZE);
         if (bytes < 1) {
-            fprintf(stderr, "ERROR: DB open failed\n");//stderr
+            fprintf(stdout, "ERROR: DB open failed\n");//stderr
             goto FAILED;
         }
         printf("DB size: %d\n", bytes);
@@ -97,7 +99,7 @@ int main(int argc, char** argv) {
     }
 
     if (argc != 2) {
-        fprintf(stderr, "ERROR: Usage './geo <database.csv>'\n");
+        fprintf(stdout, "ERROR: Usage './geo <database.csv>'\n");
         goto FAILED;
     }
 
@@ -108,41 +110,56 @@ int main(int argc, char** argv) {
     fflush(stdout);
 
     while (1) {
-        fgets(command, 25, stdin);
-        /* fprintf(stderr, "%s", command); */
+        memset(command, 0, MAX_CMD_LEN);
+        fgets(command, MAX_CMD_LEN, stdin);
+
+        /* fprintf(stderr, "GEOL: received [%s]\n", command); */
+        /* fprintf(stderr, "[%c] %d\n", command[0], command[0]); */
+        /* fprintf(stderr, "[%c] %d\n", command[1], command[1]); */
+        /* fprintf(stderr, "[%c] %d\n", command[2], command[2]); */
+        /* fprintf(stderr, "[%c] %d\n", command[3], command[3]); */
+        /* fprintf(stderr, "[%c] %d\n", command[4], command[4]); */
+
+        if (command[0] < 32) {
+            continue;
+        }
 
         //LOOKUP
         if (command[5] == 'P') {
             if (!loaded){
-                fprintf(stderr, "ERROR: Lookup requested before database was ever loaded\n");//stderr
+                fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
                 goto FAILED;
             }
             const char* ip = &command[7];
             const char* answer = PerformLookup(ip);
-            printf("%s\n", answer);
-            fflush(stdout);
+            fprintf(stdout, "%s\n", answer);
         }
         else if (command[0] == 'L') {
             const int bytes = LoadDatabase(db_path, buffer, DB_SIZE);
             if (bytes < 1024) {
-                fprintf(stderr, "ERROR: DB open failed\n");//stderr
+                fprintf(stdout, "ERROR: DB open failed\n");//stderr
                 goto FAILED;
             }
-            printf("OK\n");
-            fflush(stdout);
+            fprintf(stdout, "OK\n");
         }
         else if (command[0] == 'E') {
-            printf("OK\n");
-            fflush(stdout);
+            fprintf(stdout, "OK\n");
             break;
         } else {
-            fprintf(stderr, "ERROR: Unknown command received\n");//stderr
-            goto FAILED;
+            fprintf(stderr, "ERROR: Unknown command: %s\n", command);//stderr
+            fprintf(stdout, "FAILED\n");
+            fflush(stdout);
+            /* fflush(stderr); */
+            /* goto FAILED; */
+            continue;
         }
+        fflush(stdout);
     }
     free(buffer);
     return EXIT_SUCCESS;
 FAILED:
+    fflush(stdout);
+    fflush(stderr);
     free(buffer);
     return EXIT_FAILURE;
 }
