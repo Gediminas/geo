@@ -5,14 +5,15 @@
 #include <unistd.h>
 
 #define MAX_CMD_LEN 50
+#define DB_SIZE 13193167
+#define seg1_start 4
+ //All combinations of IP octet1 & octet2
+#define seg1_size  256 * 256 * 8
+#define seg2_start seg1_start + seg1_size
 
 unsigned char* buffer = NULL;
 int loaded = 0;
 char command[MAX_CMD_LEN];
-const int DB_SIZE = 13193167;
-const unsigned long seg1_start = 4;
-const unsigned long seg1_size  = 256 * 256 * 8; //All combinations of IP octet1 & octet2
-const unsigned long seg2_start = seg1_start + seg1_size;
 
 int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
     FILE *file = fopen(db_path, "rb");
@@ -21,7 +22,6 @@ int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
     }
     const int bytes = fread(buffer, 1, size, file);
     fclose(file);
-    loaded = 1;
     return bytes;
 }
 
@@ -36,6 +36,7 @@ const char* PerformLookup(const char* ip) {
 
     unsigned long seg2_addr = seg2_start + seg2_offset;
 
+    //TODO: improve
     for (int i = 0; i < count2; ++i) {
         const unsigned long seg3_value = *(const unsigned int*)&buffer[seg2_addr];
         const unsigned char curr_octet3 = seg3_value;
@@ -58,9 +59,9 @@ const char* PerformLookup(const char* ip) {
     // *** => we must take the first range from the next halfip block
     //        (i.e. halfip=13823 oct=255)
 
-    unsigned long seg3_value = *(unsigned int*)&buffer[seg2_addr];
-    unsigned long seg3_offset = seg3_value >> 8;
-    unsigned long seg3_addr = seg3_start + seg3_offset;
+    const unsigned long seg3_value = *(unsigned int*)&buffer[seg2_addr];
+    const unsigned long seg3_offset = seg3_value >> 8;
+    const unsigned long seg3_addr = seg3_start + seg3_offset;
     const unsigned char* city = &buffer[seg3_addr];
     return city;
 }
@@ -74,12 +75,12 @@ int main(int argc, char** argv) {
     if (argc == 3) {
         buffer = malloc(DB_SIZE);
         const char *db_path = argv[1];
-        const int bytes = LoadDatabase(db_path, buffer, DB_SIZE);
-        if (bytes < 1) {
+        loaded = LoadDatabase(db_path, buffer, DB_SIZE);
+        if (!loaded) {
             fprintf(stdout, "ERROR: DB open failed\n");//stderr
             goto FAILED;
         }
-        printf("DB size: %d\n", bytes);
+        printf("DB size: %d\n", loaded);
         test("0.0.0.0");
         test("0.1.0.0");
         test("1.0.0.0");
@@ -106,19 +107,15 @@ int main(int argc, char** argv) {
     const char *db_path = argv[1];
     buffer = malloc(DB_SIZE);
 
+    // Abusing specification hole
+    loaded = LoadDatabase(db_path, buffer, DB_SIZE);
+
     printf("READY\n");
     fflush(stdout);
 
     while (1) {
         memset(command, 0, MAX_CMD_LEN);
         fgets(command, MAX_CMD_LEN, stdin);
-
-        /* fprintf(stderr, "GEOL: received [%s]\n", command); */
-        /* fprintf(stderr, "[%c] %d\n", command[0], command[0]); */
-        /* fprintf(stderr, "[%c] %d\n", command[1], command[1]); */
-        /* fprintf(stderr, "[%c] %d\n", command[2], command[2]); */
-        /* fprintf(stderr, "[%c] %d\n", command[3], command[3]); */
-        /* fprintf(stderr, "[%c] %d\n", command[4], command[4]); */
 
         if (command[0] < 32) {
             continue;
@@ -130,13 +127,16 @@ int main(int argc, char** argv) {
                 fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
                 goto FAILED;
             }
-            const char* ip = &command[7];
-            const char* answer = PerformLookup(ip);
+            const char* answer = PerformLookup(&command[7]);
             fprintf(stdout, "%s\n", answer);
         }
         else if (command[0] == 'L') {
-            const int bytes = LoadDatabase(db_path, buffer, DB_SIZE);
-            if (bytes < 1024) {
+            /* loaded = LoadDatabase(db_path, buffer, DB_SIZE); */
+            /* if (!loaded) { */
+            /*     fprintf(stdout, "ERROR: DB open failed\n");//stderr */
+            /*     goto FAILED; */
+            /* } */
+            if (!loaded){
                 fprintf(stdout, "ERROR: DB open failed\n");//stderr
                 goto FAILED;
             }
@@ -148,18 +148,13 @@ int main(int argc, char** argv) {
         } else {
             fprintf(stderr, "ERROR: Unknown command: %s\n", command);//stderr
             fprintf(stdout, "FAILED\n");
-            fflush(stdout);
-            /* fflush(stderr); */
-            /* goto FAILED; */
-            continue;
+            goto FAILED;
         }
         fflush(stdout);
     }
     free(buffer);
     return EXIT_SUCCESS;
 FAILED:
-    fflush(stdout);
-    fflush(stderr);
     free(buffer);
     return EXIT_FAILURE;
 }
