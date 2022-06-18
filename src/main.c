@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     }
 
     if (argc != 2) {
-        fprintf(stdout, "ERROR: Usage './geo <database.csv>'\n");
+        fprintf(stdout, "ERROR: Usage './geo <geo.db>'\n");
         goto FAILED;
     }
 
