@@ -26,17 +26,19 @@ int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
 }
 
 const char* PerformLookup(const char* ip) {
-    const in_addr_t inet_ip         = inet_addr(ip);
-    const unsigned short halfip     = htons(inet_ip); //little-endian
-    const unsigned char ip_octet3   = *(((const unsigned char*)&inet_ip)+2);
+    const in_addr_t ip_be          = inet_addr(ip); //netorder == big-endian
+    // const unsigned short halfip = ((ip_be & 0xFF00) >> 8) | ((ip_be & 0x00FF) << 8); // to LE always => no gain
+    const unsigned short halfip    = ntohs((unsigned short)ip_be); //to this machine endian (little-endian)
+    const unsigned char ip_octet3  = *(((const unsigned char*)&ip_be)+2);
+
     const unsigned long seg3_start  = *(const unsigned int*)&buffer[0];
-    const unsigned long seg1_offset = seg1_start + halfip * 8;
+    const unsigned long seg1_offset = seg1_start + halfip * 8; //Lets trust compiler to do smth better than <<3
     const unsigned long seg2_offset = *(const unsigned int*)&buffer[seg1_offset];
     const unsigned long count2      = *(const unsigned int*)&buffer[seg1_offset + 4];
 
     unsigned long seg2_addr = seg2_start + seg2_offset;
 
-    //TODO: improve
+    //TODO: improve maybe (no gain if jumping by halfs)
     for (int i = 0; i < count2; ++i) {
         const unsigned long seg3_value = *(const unsigned int*)&buffer[seg2_addr];
         const unsigned char curr_octet3 = seg3_value;
@@ -84,10 +86,6 @@ int main(int argc, char** argv) {
     while (1) {
         memset(command, 0, MAX_CMD_LEN);
         fgets(command, MAX_CMD_LEN, stdin);
-
-        if (command[0] < 32) {
-            continue;
-        }
 
         //LOOKUP
         if (command[5] == 'P') {
