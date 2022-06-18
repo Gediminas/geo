@@ -6,10 +6,9 @@ import argparse
 
 
 class TestData:
-    def __init__(self, ip, country, city):
+    def __init__(self, ip, expected):
         self.ip = ip
-        self.country = country
-        self.city = city
+        self.expected = expected
 
 
 # Fail gracefully if psutil package is not installed
@@ -35,7 +34,7 @@ def format_memory_usage(rss):
     elif rss >= MB:
         return f'{round(rss / MB, 2)}mb'
     elif rss >= KB:
-        return f'{round(rss / KB, 2)}mb'
+        return f'{round(rss / KB, 2)}kb'
     else:
         return f'{round(rss, 2)}b'
 
@@ -86,13 +85,8 @@ def send_exit_command(process):
 
 def send_lookup_command(process, ip):
     """Send command to the process under test to perform geolocation loookup"""
-    result, time, memory_usage = send_command(process, "LOOKUP " + ip)
-
-    tokens = result.strip().split(',')
-    if len(tokens) != 2:
-        raise Exception(f'Invalid response - "{result}"')
-
-    return (tokens[0], tokens[1], time, memory_usage)
+    answer, time, memory_usage = send_command(process, "LOOKUP " + ip)
+    return (answer.strip(), time, memory_usage)
 
 
 if __name__ == "__main__":
@@ -119,63 +113,52 @@ if __name__ == "__main__":
     wait_ready(process)
 
     # Request to load the database
-    latency, memory_usage = send_load_command(process)
-    print("Database loaded",
-          "Memory usage:", format_memory_usage(memory_usage),
-          "Load time:", format_time(latency))
+    load_latency, memory_usage = send_load_command(process)
+    print("Database loaded, Memory usage: %s, Load time: %s" %
+            (format_memory_usage(memory_usage), format_time(load_latency)))
 
     # Perform some tests
     test_suite = [
-        TestData("0.0.0.0",         "-",  "-"),
-        TestData("0.1.0.0",         "-",  "-"),
-        TestData("1.0.0.0",         "US", "Los Angeles"),
-        TestData("1.2.3.4",         "AU", "Brisbane"),
-        TestData('5.44.16.0',       'GB', 'Hastings'),
-        TestData("8.8.8.8",         "US", "Mountain View"),
-        TestData('8.24.99.0',       'US', 'Hastings'),
-        TestData("10.0.0.0",        "-",  "-"),
-        TestData("53.103.143.255",  "US", "Des Moines"),
-        TestData("53.103.144.0",    "DE", "Stuttgart"),
-        TestData("53.103.255.255",  "DE", "Stuttgart"),
-        TestData("53.104.0.0",      "DE", "Stuttgart"),
-        TestData("53.255.255.255",  "DE", "Stuttgart"),
-        TestData('54.0.0.0',        'US', 'Rahway'),
-        TestData('71.6.28.0',       'US', 'San Jose'),
-        TestData('71.6.28.255',     'US', 'San Jose'),
-        TestData('71.6.29.0',       'US', 'Concord'),
-        TestData("79.238.202.1",    "DE", "Beverstedt, Flecken"),
-        TestData("197.211.217.7",   "ZW", "Victoria Falls"),
-        TestData('223.255.255.255', 'AU', 'Brisbane'),
-        TestData("255.255.255.255", "-",  "-"),
+        TestData('0.0.0.0',         '-,-'),
+        TestData('0.1.0.0',         '-,-'),
+        TestData('0.255.255.255',   '-,-'),
+        TestData('1.0.0.0',         'US,Los Angeles'),
+        TestData('1.2.3.4',         'AU,Brisbane'),
+        TestData('5.44.16.0',       'GB,Hastings'),
+        TestData('8.8.8.8',         'US,Mountain View'),
+        TestData('8.24.99.0',       'US,Hastings'),
+        TestData('10.0.0.0',        '-,-'),
+        TestData('53.103.143.255',  'US,Des Moines'),
+        TestData('53.103.144.0',    'DE,Stuttgart'),
+        TestData('53.103.255.255',  'DE,Stuttgart'),
+        TestData('53.104.0.0',      'DE,Stuttgart'),
+        TestData('53.255.255.255',  'DE,Stuttgart'),
+        TestData('54.0.0.0',        'US,Rahway'),
+        TestData('71.6.28.0',       'US,San Jose'),
+        TestData('71.6.28.255',     'US,San Jose'),
+        TestData('71.6.29.0',       'US,Concord'),
+        TestData('79.238.202.1',    'DE,Beverstedt, Flecken'),
+        TestData('197.211.217.7',   'ZW,Victoria Falls'),
+        TestData('223.255.255.255', 'AU,Brisbane'),
+        TestData('255.255.255.255', '-,-'),
     ]
+    print('%-4s %-15s %-30s %-8s %-6s' % ('', 'IP', 'ANSWER', 'LOOKUP', 'POINTS') )
     for test in test_suite:
-        country_code, city, latency, memory_usage = send_lookup_command(
-                                                                    process,
-                                                                    test.ip)
-
-        correct = (country_code == test.country and city == test.city)
+        answer, lookup_time, memory_usage = send_lookup_command(process, test.ip)
+        correct = (answer == test.expected)
 
         if correct:
-            print("OK   ",
-                  test.ip,
-                  country_code,
-                  city,
-                  "Memory usage:", format_memory_usage(memory_usage),
-                  "Lookup time:", format_time(latency)
-                  )
+            load_time_ms = load_latency / 1000000
+            memory_usage_mb = memory_usage / (1024*1024)
+            lookup_time_ms = lookup_time / 1000000
+            points = load_time_ms + memory_usage_mb * 10 + lookup_time_ms * 1000
 
+            print('\x1b[1;32mOK\x1b[0m   %-15s %-30s %-8s %6.1f' % (
+                  test.ip, answer, format_time(lookup_time), points))
         else:
-            print("FAIL ",
-                  test.ip,
-                  country_code,
-                  city,
-                  "Expected:",
-                  test.country,
-                  test.city,
-                  "Memory Usage:",
-                  format_memory_usage(memory_usage),
-                  "Lookup time:", format_time(latency)
-                  )
+            print('\x1b[1;31mFAIL %-15s %s ("%s" expected)\x1b[0m' % (
+                  test.ip, answer, test.expected))
+            continue
 
     send_exit_command(process)
     process.wait()
