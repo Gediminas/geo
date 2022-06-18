@@ -2,3 +2,4 @@ geo
 geo_proxy
 *.db
 *.csv
+*.md

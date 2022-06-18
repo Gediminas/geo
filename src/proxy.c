@@ -3,15 +3,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#define READ 0
-#define WRITE 1
-#define MAX_CMD_LEN 50
+#define PIPE_READ 0
+#define PIPE_WRITE 1
+#define MAX_IBUF_LEN 50
+#define MAX_OBUF_LEN 50
 
 pid_t popen2(const char *command, int *infp, int *outfp) {
-    int p_stdin[2];
-    int p_stdout[2];
+    int pipe_in_fds[2], pipe_out_fds[2];
 
-    if (pipe(p_stdin) || pipe(p_stdout))
+    if (pipe(pipe_in_fds) != 0 || pipe(pipe_out_fds) != 0)
         return -1;
 
     const pid_t pid = fork();
@@ -20,10 +20,11 @@ pid_t popen2(const char *command, int *infp, int *outfp) {
         return pid;
 
     if (!pid) {
-        close(p_stdin[WRITE]);
-        dup2(p_stdin[READ], READ);
-        close(p_stdout[READ]);
-        dup2(p_stdout[WRITE], WRITE);
+        close(pipe_in_fds[PIPE_WRITE]);
+        dup2(pipe_in_fds[PIPE_READ], PIPE_READ);
+
+        close(pipe_out_fds[PIPE_READ]);
+        dup2(pipe_out_fds[PIPE_WRITE], PIPE_WRITE);
 
         execl("/bin/sh", "sh", "-c", command, NULL);
         perror("execl");
@@ -31,46 +32,49 @@ pid_t popen2(const char *command, int *infp, int *outfp) {
     }
 
     if (infp)
-        *infp = p_stdin[WRITE];
+        *infp = pipe_in_fds[PIPE_WRITE];
     else
-        close(p_stdin[WRITE]);
+        close(pipe_in_fds[PIPE_WRITE]);
 
     if (outfp)
-        *outfp = p_stdout[READ];
+        *outfp = pipe_out_fds[PIPE_READ];
     else
-        close(p_stdout[READ]);
+        close(pipe_out_fds[PIPE_READ]);
 
     return pid;
 }
 
 int main(int argc, char **argv) {
-    int infp, outfp;
-    char tx[MAX_CMD_LEN];
-    char rx[MAX_CMD_LEN];
+    if (argc != 2) {
+        fprintf(stderr, "ERROR: Usage './geo_proxy <geo.db>'\n");
+        return EXIT_FAILURE;
+    }
 
-    if (popen2("./geo ./geo.db", &infp, &outfp) <= 0) {
-        printf("Unable to exec sort\n");
+    int infp, outfp;
+    char obuffer[MAX_IBUF_LEN];
+    char ibuffer[MAX_OBUF_LEN];
+
+    const char *db_path = argv[1];
+    sprintf(obuffer, "./geo %s", db_path);
+
+    if (popen2(obuffer, &infp, &outfp) < 0) {
+        fprintf(stderr, "Unable to exec\n");
         exit(1);
     }
 
-    memset(rx, 0, MAX_CMD_LEN);
-    read(outfp, rx, MAX_CMD_LEN);
-    printf(rx);
-    fflush(stdout);
-
     while (1) {
-        memset(tx, 0, MAX_CMD_LEN);
-        memset(rx, 0, MAX_CMD_LEN);
-
-        fgets(tx, MAX_CMD_LEN, stdin);
-        write(infp, tx, strlen(tx));
-        read(outfp, rx, MAX_CMD_LEN);
-        printf(rx);
+        memset(ibuffer, 0, MAX_OBUF_LEN);
+        read(outfp, ibuffer, MAX_OBUF_LEN);
+        fprintf(stdout, ibuffer);
         fflush(stdout);
 
-        if (tx[0] == 'E') {
+        if (obuffer[0] == 'E') {
             break;
         }
+
+        memset(obuffer, 0, MAX_IBUF_LEN);
+        fgets(obuffer, MAX_IBUF_LEN, stdin);
+        write(infp, obuffer, strlen(obuffer));
     }
 
     close(infp); //?

@@ -126,16 +126,27 @@ if __name__ == "__main__":
 
     # Perform some tests
     test_suite = [
-        TestData('1.0.0.0', 'US', 'Los Angeles'),
-        TestData('71.6.28.0', 'US', 'San Jose'),
-        TestData('71.6.28.255', 'US', 'San Jose'),
-        TestData('71.6.29.0', 'US', 'Concord'),
-        TestData('53.103.144.0', 'DE', 'Stuttgart'),
-        TestData('53.255.255.255', 'DE', 'Stuttgart'),
-        TestData('54.0.0.0', 'US', 'Rahway'),
+        TestData("0.0.0.0",         "-",  "-"),
+        TestData("0.1.0.0",         "-",  "-"),
+        TestData("1.0.0.0",         "US", "Los Angeles"),
+        TestData("1.2.3.4",         "AU", "Brisbane"),
+        TestData('5.44.16.0',       'GB', 'Hastings'),
+        TestData("8.8.8.8",         "US", "Mountain View"),
+        TestData('8.24.99.0',       'US', 'Hastings'),
+        TestData("10.0.0.0",        "-",  "-"),
+        TestData("53.103.143.255",  "US", "Des Moines"),
+        TestData("53.103.144.0",    "DE", "Stuttgart"),
+        TestData("53.103.255.255",  "DE", "Stuttgart"),
+        TestData("53.104.0.0",      "DE", "Stuttgart"),
+        TestData("53.255.255.255",  "DE", "Stuttgart"),
+        TestData('54.0.0.0',        'US', 'Rahway'),
+        TestData('71.6.28.0',       'US', 'San Jose'),
+        TestData('71.6.28.255',     'US', 'San Jose'),
+        TestData('71.6.29.0',       'US', 'Concord'),
+        TestData("79.238.202.1",    "DE", "Beverstedt, Flecken"),
+        TestData("197.211.217.7",   "ZW", "Victoria Falls"),
         TestData('223.255.255.255', 'AU', 'Brisbane'),
-        TestData('5.44.16.0', 'GB', 'Hastings'),
-        TestData('8.24.99.0', 'US', 'Hastings'),
+        TestData("255.255.255.255", "-",  "-"),
     ]
     for test in test_suite:
         country_code, city, latency, memory_usage = send_lookup_command(
