@@ -85,23 +85,17 @@ def send_exit_command(process):
 
 def send_lookup_command(process, ip):
     """Send command to the process under test to perform geolocation loookup"""
-    result, time, memory_usage = send_command(process, "LOOKUP " + ip)
-
-    tokens = result.strip().split(',', 2)
-    if len(tokens) != 2:
-        raise Exception(f'Invalid response - "{result}"')
-
-    return (tokens[0], tokens[1], time, memory_usage)
+    answer, time, memory_usage = send_command(process, "LOOKUP " + ip)
+    return (answer.strip(), time, memory_usage)
 
 
 class TestData:
-    def __init__(self, ip, country, city):
+    def __init__(self, ip, expected):
         self.ip = ip
-        self.country = country
-        self.city = city
+        self.expected = expected
 
     def __str__(self):
-        return str(self.ip) + " => " + self.country + ", " + self.city
+        return str(self.ip) + " => " + self.expected
 
 
 if __name__ == "__main__":
@@ -136,11 +130,8 @@ if __name__ == "__main__":
     # Request to load the database
     print("Loading database...")
     load_latency, load_memory_usage = send_load_command(process)
-    print("Database loaded",
-          "Memory usage:", format_memory_usage(load_memory_usage),
-          "Load time:", format_time(load_latency))
-
-
+    print("Database loaded, Memory usage: %s, Load time: %s" %
+            (format_memory_usage(load_memory_usage), format_time(load_latency)))
 
     print("Loading CSV...")
     entries = []
@@ -150,8 +141,7 @@ if __name__ == "__main__":
             entries.append(
                 TestData(
                     str(int(row[0]) + random.randint(0, 255)),
-                    row[2],
-                    row[5]))
+                    row[2]+","+row[5]))
 
     print("Randomizing CSV...")
     random.shuffle(entries)
@@ -167,12 +157,11 @@ if __name__ == "__main__":
     for idx, entry in enumerate(entries):
         # execute test
         try:
-            country_code, city, latency_ns, memory_usage = send_lookup_command(
-                                                                    process,
-                                                                    int2ip(entry.ip))
+            answer, latency_ns, memory_usage = send_lookup_command(process,
+                                                                   int2ip(entry.ip))
             # check the answer
-            if (country_code != entry.country or city != entry.city):
-                print(entry.ip, country_code + ", " + city + " != " + entry.country + ", " + entry.city)
+            if answer != entry.expected:
+                print(entry.ip, answer + " != " + entry.expected)
                 incorrect_cnt += 1
                 continue
 
@@ -200,11 +189,12 @@ if __name__ == "__main__":
             avg_lookup_time = sum_latency / correct_cnt
             avg_lookup_time_ms = avg_lookup_time / 1000000
             points = load_time_ms + max_memory_usage_mb * 10 + avg_lookup_time_ms * 1000
-            print("Done: " + str(percentage_done) + "% Current points: " + str(points) +
-                  " current memory: " + format_memory_usage(max_memory_usage) +
-                  " avg lookup time: " + format_time(avg_lookup_time))
+            print("%.1f%%  curr.points: %.1f  curr.memory: %s  avg.lookup: %s" % (
+                    percentage_done, points,
+                    format_memory_usage(max_memory_usage),
+                    format_time(avg_lookup_time)))
             last_percentage_done = percentage_done
-
+        # break
 
     # Gather results
     load_time_ms = load_latency / 1000000
@@ -221,16 +211,10 @@ if __name__ == "__main__":
     print("      Correct count: ", correct_cnt, correct_percentage, "%")
     print("    Incorrect count: ", incorrect_cnt, incorrect_percentage, "%")
     print("      Failure count: ", failures_cnt, failures_percentage, "%")
-    print("       Memory usage: ", format_memory_usage(max_memory_usage))
-    print("          Load time: ", format_time(load_latency))
-    print("        Lookup time: ", format_time(avg_latency))
-    print("             Points: ", points)
-
-    print()
-    print("Points:")
-    print("          Load (ms): ", load_time_ms)
-    print("     Memory (MB*10): ", max_memory_usage_mb * 10)
-    print("    Lookup(ms*1000): ", avg_latency_ms * 1000)
+    print("       Memory usage: %-9s \t%6.2f points" % (format_memory_usage(max_memory_usage), max_memory_usage_mb * 10))
+    print("       DB Load time: %-9s \t%6.2f points" % (format_time(load_latency), load_time_ms))
+    print("        Lookup time: %-9s \t%6.2f points" % (format_time(avg_latency), avg_latency_ms * 1000))
+    print("             Points: %5.2f" % (points))
 
     send_exit_command(process)
     process.wait()
