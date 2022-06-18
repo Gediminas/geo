@@ -66,41 +66,9 @@ const char* PerformLookup(const char* ip) {
     return city;
 }
 
-void test(const char* ip) {
-    printf("%s\t%s\n", ip, PerformLookup(ip));
-}
-
 int main(int argc, char** argv) {
-    // Testing
-    if (argc == 3) {
-        buffer = malloc(DB_SIZE);
-        const char *db_path = argv[1];
-        loaded = LoadDatabase(db_path, buffer, DB_SIZE);
-        if (!loaded) {
-            fprintf(stdout, "ERROR: DB open failed\n");//stderr
-            goto FAILED;
-        }
-        printf("DB size: %d\n", loaded);
-        test("0.0.0.0");
-        test("0.1.0.0");
-        test("1.0.0.0");
-        test("1.2.3.4");
-        test("8.8.8.8");
-        test("10.0.0.0");
-        test("53.103.143.255");
-        test("53.103.144.0");
-        test("53.103.255.255");
-        test("53.104.0.0");
-        test("53.255.255.255");
-        test("79.238.202.1");
-        test("197.211.217.7");
-        test("255.255.255.255");
-        free(buffer);
-        return EXIT_SUCCESS;
-    }
-
     if (argc != 2) {
-        fprintf(stdout, "ERROR: Usage './geo <geo.db>'\n");
+        fprintf(stderr, "ERROR: Usage './geo <geo.db>'\n");
         goto FAILED;
     }
 
@@ -110,7 +78,7 @@ int main(int argc, char** argv) {
     // Abusing specification hole
     loaded = LoadDatabase(db_path, buffer, DB_SIZE);
 
-    printf("READY\n");
+    fprintf(stdout, "READY\n");
     fflush(stdout);
 
     while (1) {
