@@ -142,7 +142,7 @@ if __name__ == "__main__":
         TestData('223.255.255.255', 'AU,Brisbane'),
         TestData('255.255.255.255', '-,-'),
     ]
-    print('%-4s %-15s %-30s %-8s %-6s' % ('', 'IP', 'ANSWER', 'LOOKUP', 'POINTS') )
+    print('%-4s %-15s %-30s %-8s %-8s %-6s' % ('', 'IP', 'ANSWER', 'MEMORY', 'LOOKUP', 'POINTS') )
     for test in test_suite:
         answer, lookup_time, memory_usage = send_lookup_command(process, test.ip)
         correct = (answer == test.expected)
@@ -153,8 +153,9 @@ if __name__ == "__main__":
             lookup_time_ms = lookup_time / 1000000
             points = load_time_ms + memory_usage_mb * 10 + lookup_time_ms * 1000
 
-            print('\x1b[1;32mOK\x1b[0m   %-15s %-30s %-8s %6.1f' % (
-                  test.ip, answer, format_time(lookup_time), points))
+            print('\x1b[1;32mOK\x1b[0m   %-15s %-30s %-8s %-8s %6.1f' % (
+                  test.ip, answer,
+                  format_memory_usage(memory_usage), format_time(lookup_time), points))
         else:
             print('\x1b[1;31mFAIL %-15s %s ("%s" expected)\x1b[0m' % (
                   test.ip, answer, test.expected))
