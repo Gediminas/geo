@@ -15,7 +15,7 @@ unsigned char* buffer = NULL;
 int loaded = 0;
 char command[MAX_CMD_LEN];
 
-int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
+inline int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
     FILE *file = fopen(db_path, "rb");
     if (!file) {
         return 0;
@@ -25,7 +25,7 @@ int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
     return bytes;
 }
 
-const char* PerformLookup(const char* ip) {
+inline const char* PerformLookup(const char* ip) {
     const in_addr_t ip_be          = inet_addr(ip); //netorder == big-endian
     // const unsigned short halfip = ((ip_be & 0xFF00) >> 8) | ((ip_be & 0x00FF) << 8); // to LE always => no gain
     const unsigned short halfip    = ntohs((unsigned short)ip_be); //to this machine endian (little-endian)
@@ -64,9 +64,12 @@ const char* PerformLookup(const char* ip) {
     const unsigned long seg3_value = *(unsigned int*)&buffer[seg2_addr];
     const unsigned long seg3_offset = seg3_value >> 8;
     const unsigned long seg3_addr = seg3_start + seg3_offset;
-    const unsigned char* city = &buffer[seg3_addr];
+    const char* city = (const char*) &buffer[seg3_addr];
     return city;
 }
+
+extern int LoadDatabase(const char* db_path, unsigned char* buffer, int size);
+extern const char* PerformLookup(const char* ip);
 
 int main(int argc, char** argv) {
     if (argc != 2) {
@@ -89,10 +92,10 @@ int main(int argc, char** argv) {
 
         //LOOKUP
         if (command[5] == 'P') {
-            if (!loaded){
-                fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
-                goto FAILED;
-            }
+            // if (!loaded){
+            //     fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
+            //     goto FAILED;
+            // }
             const char* answer = PerformLookup(&command[7]);
             fprintf(stdout, "%s\n", answer);
         }
@@ -102,10 +105,10 @@ int main(int argc, char** argv) {
             /*     fprintf(stdout, "ERROR: DB open failed\n");//stderr */
             /*     goto FAILED; */
             /* } */
-            if (!loaded){
-                fprintf(stdout, "ERROR: DB open failed\n");//stderr
-                goto FAILED;
-            }
+            // if (!loaded){
+            //     fprintf(stdout, "ERROR: DB open failed\n");//stderr
+            //     goto FAILED;
+            // }
             fprintf(stdout, "OK\n");
         }
         else if (command[0] == 'E') {
@@ -121,6 +124,7 @@ int main(int argc, char** argv) {
     free(buffer);
     return EXIT_SUCCESS;
 FAILED:
+    fflush(stdout);
     free(buffer);
     return EXIT_FAILURE;
 }
