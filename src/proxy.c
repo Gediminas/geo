@@ -5,8 +5,8 @@
 
 #define PIPE_READ 0
 #define PIPE_WRITE 1
-#define MAX_IBUF_LEN 50
-#define MAX_OBUF_LEN 50
+#define MAX_IBUF_LEN 25
+#define MAX_OBUF_LEN 48
 
 pid_t popen2(const char *command, int *infp, int *outfp) {
     int pipe_in_fds[2], pipe_out_fds[2];
