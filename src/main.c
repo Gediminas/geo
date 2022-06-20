@@ -1,8 +1,16 @@
+// C program for Consumer process illustrating
+// POSIX shared-memory API.
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 #include <string.h>
-#include <arpa/inet.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <arpa/inet.h>
+
 
 #define MAX_CMD_LEN 50
 #define DB_SIZE 13193167
@@ -15,17 +23,20 @@ unsigned char* buffer = NULL;
 int loaded = 0;
 char command[MAX_CMD_LEN];
 
-inline int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
-    FILE *file = fopen(db_path, "rb");
-    if (!file) {
-        return 0;
-    }
-    const int bytes = fread(buffer, 1, size, file);
-    fclose(file);
-    return bytes;
-}
+/* const char* name = "./geo.db"; */
+/* void* ptr = NULL; */
 
-inline const char* PerformLookup(const char* ip) {
+/* unsigned char* LoadDatabase(const char* db_path) { */
+/*     /1* FILE *file = fopen(db_path, "rb"); *1/ */
+/*     /1* if (!file) { *1/ */
+/*     /1*     return 0; *1/ */
+/*     /1* } *1/ */
+/*     /1* const int bytes = fread(buffer, 1, size, file); *1/ */
+/*     /1* fclose(file); *1/ */
+/*     /1* return bytes; *1/ */
+/* } */
+
+const char* PerformLookup(const char* ip) {
     const in_addr_t ip_be          = inet_addr(ip); //netorder == big-endian
     // const unsigned short halfip = ((ip_be & 0xFF00) >> 8) | ((ip_be & 0x00FF) << 8); // to LE always => no gain
     const unsigned short halfip    = ntohs((unsigned short)ip_be); //to this machine endian (little-endian)
@@ -68,20 +79,36 @@ inline const char* PerformLookup(const char* ip) {
     return city;
 }
 
-extern int LoadDatabase(const char* db_path, unsigned char* buffer, int size);
-extern const char* PerformLookup(const char* ip);
-
 int main(int argc, char** argv) {
     if (argc != 2) {
         fprintf(stderr, "ERROR: Usage './geo <geo.db>'\n");
         goto FAILED;
     }
-
     const char *db_path = argv[1];
-    buffer = malloc(DB_SIZE);
 
-    // Abusing specification hole
-    loaded = LoadDatabase(db_path, buffer, DB_SIZE);
+    const pid_t pid = fork();
+    if (pid < 0)
+        return pid;
+
+    if (pid == 0) {
+        // const int shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+        const int shm_fd = open(db_path, O_RDONLY, 0666);
+        ftruncate(shm_fd, DB_SIZE);
+        void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_PRIVATE, shm_fd, 0);
+        sleep(333333);
+        return 0;
+    }
+    /* printf("WAITING for child to finish\n"); */
+    /* int status; */
+    /* while (wait(&status) != pid); */
+
+    /* const int shm_fd = shm_open(name, O_RDONLY, 0666); */
+    /* void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_SHARED, shm_fd, 0); */
+
+    const int shm_fd = open(db_path, O_RDONLY, 0666);
+    ftruncate(shm_fd, DB_SIZE);
+    void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_PRIVATE, shm_fd, 0);
+    buffer = (unsigned char*) ptr;
 
     fprintf(stdout, "READY\n");
     fflush(stdout);
@@ -121,10 +148,11 @@ int main(int argc, char** argv) {
         }
         fflush(stdout);
     }
-    free(buffer);
+    shm_unlink(db_path);
     return EXIT_SUCCESS;
 FAILED:
     fflush(stdout);
-    free(buffer);
+    shm_unlink(db_path);
     return EXIT_FAILURE;
 }
+
