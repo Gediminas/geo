@@ -23,6 +23,8 @@ unsigned char* buffer = NULL;
 int loaded = 0;
 char command[MAX_CMD_LEN];
 
+const char* name = "GEO1";
+
 /* const char* name = "./geo.db"; */
 /* void* ptr = NULL; */
 
@@ -91,24 +93,41 @@ int main(int argc, char** argv) {
         return pid;
 
     if (pid == 0) {
-        // const int shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
-        const int shm_fd = open(db_path, O_RDONLY, 0666);
-        ftruncate(shm_fd, DB_SIZE);
-        void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_PRIVATE, shm_fd, 0);
-        sleep(333333);
+        popen("./geo_load geo.db", "r");
+        /* const int ffd = open(db_path, O_RDONLY, 0666); */
+        /* void* fbuf = mmap(0, DB_SIZE, PROT_READ, MAP_PRIVATE, ffd, 0); */
+
+        /* fprintf(stderr, "fbuf: %u (=? 12296156)\n", *(unsigned int*)fbuf); */
+
+        /* const int mfd = shm_open("GEOOO", O_CREAT | O_RDWR, 0666); */
+        /* ftruncate(mfd, DB_SIZE); */
+        /* void* mbuf = mmap(0, DB_SIZE, PROT_WRITE, MAP_PRIVATE, mfd, 0); */
+        /* memcpy(mbuf, fbuf, DB_SIZE); */
+        /* close(ffd); */
+        /* shm_unlink(db_path); */
+
+        /* fprintf(stderr, "mbuf: %u\n", *(unsigned int*)mbuf); */
+        /* sleep(20); */
         return 0;
     }
-    /* printf("WAITING for child to finish\n"); */
-    /* int status; */
-    /* while (wait(&status) != pid); */
+    /* /1* int status; *1/ */
+    /* /1* while (wait(&status) != pid); *1/ */
+    /* /1* printf("Continue\n"); *1/ */
+    /* sleep(1); */
 
-    /* const int shm_fd = shm_open(name, O_RDONLY, 0666); */
-    /* void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_SHARED, shm_fd, 0); */
+    const int mfd = shm_open(name, O_RDONLY, 0666);
+    void* mbuf = mmap(0, DB_SIZE, PROT_READ, MAP_SHARED, mfd, 0);
+    buffer = (unsigned char*) mbuf;
 
+    fprintf(stderr, "buff: %u\n", *(unsigned int*)buffer);
+
+
+    /*
     const int shm_fd = open(db_path, O_RDONLY, 0666);
     ftruncate(shm_fd, DB_SIZE);
     void* ptr = mmap(0, DB_SIZE, PROT_READ, MAP_PRIVATE, shm_fd, 0);
     buffer = (unsigned char*) ptr;
+    */
 
     fprintf(stdout, "READY\n");
     fflush(stdout);
@@ -148,11 +167,12 @@ int main(int argc, char** argv) {
         }
         fflush(stdout);
     }
-    shm_unlink(db_path);
+    shm_unlink(name);
     return EXIT_SUCCESS;
 FAILED:
     fflush(stdout);
-    shm_unlink(db_path);
+    shm_unlink(name);
     return EXIT_FAILURE;
+
 }
 

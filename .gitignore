@@ -1,5 +1,5 @@
 geo
-geo_proxy
+geo_load
 *.db
 *.csv
 *.md

@@ -182,19 +182,22 @@ if __name__ == "__main__":
 
 
         # Report progress
-        percentage_done = round(idx / len(entries) * 100, 0)
+        percentage_done = round(idx / len(entries) * 100, 4)
         if percentage_done != last_percentage_done:
             load_time_ms = load_latency / 1000000
             max_memory_usage_mb = max_memory_usage / (1024*1024)
             avg_lookup_time = sum_latency / correct_cnt
             avg_lookup_time_ms = avg_lookup_time / 1000000
             points = load_time_ms + max_memory_usage_mb * 10 + avg_lookup_time_ms * 1000
-            print("%.1f%%  curr.points: %.1f  curr.memory: %s  avg.lookup: %s" % (
-                    percentage_done, points,
+            print("%.4f%% %d curr.points: %.1f  curr.memory: %s  avg.lookup: %s" % (
+                    percentage_done, correct_cnt, points,
                     format_memory_usage(max_memory_usage),
                     format_time(avg_lookup_time)))
             last_percentage_done = percentage_done
-        # break
+
+            time.sleep(1)
+        # if max_memory_usage_mb > 5:
+        #     break
 
     # Gather results
     load_time_ms = load_latency / 1000000
