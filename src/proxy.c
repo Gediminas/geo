@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
+/* #include <sys/shm.h> */
+#include <fcntl.h>
+
 
 #define PIPE_READ 0
 #define PIPE_WRITE 1
@@ -50,33 +54,56 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    int infp, outfp;
-    char obuffer[MAX_IBUF_LEN];
-    char ibuffer[MAX_OBUF_LEN];
-
     const char *db_path = argv[1];
-    sprintf(obuffer, "./geo %s", db_path);
 
-    if (popen2(obuffer, &infp, &outfp) < 0) {
+    int infp, outfp;
+    char cmd[256];
+    sprintf(cmd, "./geo %s", db_path);
+    if (popen2(cmd, &infp, &outfp) < 0) {
         fprintf(stderr, "Unable to exec\n");
         exit(1);
     }
 
+    const char* req_key = "GEO_REQ";
+    const int req_fd = shm_open(req_key, O_CREAT | O_RDWR, 0666);
+    ftruncate(req_fd, 100);
+    char* req_buf = mmap(0, 100, PROT_WRITE, MAP_SHARED, req_fd, 0);
+    memset(req_buf, 0, 100);
+
+    const char* res_key = "GEO_RES";
+    const int res_fd = shm_open(res_key, O_RDONLY, 0666);
+    const char* res_buf = mmap(0, 100, PROT_READ, MAP_SHARED, res_fd, 0);
+
+    char cnt = 'A';
+    const char* res;
+    char input[100];
+    memset(input, 0, 100);
+
     while (1) {
-        memset(ibuffer, 0, MAX_OBUF_LEN);
-        read(outfp, ibuffer, MAX_OBUF_LEN);
-        fprintf(stdout, ibuffer);
+        while (cnt != *res_buf || 0 == *res_buf) {
+            usleep(1);
+        }
+        cnt = *res_buf;
+        res = res_buf + 2;
+
+        fprintf(stdout, "%s", res);
         fflush(stdout);
 
-        if (obuffer[0] == 'E') {
+        if (input[0] == 'E') {
             break;
         }
 
-        memset(obuffer, 0, MAX_IBUF_LEN);
-        fgets(obuffer, MAX_IBUF_LEN, stdin);
-        write(infp, obuffer, strlen(obuffer));
-    }
+        fgets(input, 100, stdin);
+        input[strcspn(input, "\n")] = 0;
+        cnt += 1;
+        if (cnt < 65 || 85 < cnt) {
+            cnt = 65;
+        }
 
-    close(infp); //?
+        sprintf(req_buf+2, "%s", input);
+        *req_buf = cnt;
+    }
+EXIT:
+    /* close(infp); //? */
     return EXIT_SUCCESS;
 }

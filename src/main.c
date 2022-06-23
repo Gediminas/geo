@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+/* #include <sys/shm.h> */
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define MAX_CMD_LEN 50
 #define DB_SIZE 13193167
@@ -13,14 +16,15 @@
 
 unsigned char* buffer = NULL;
 int loaded = 0;
-char command[MAX_CMD_LEN];
 
-inline int LoadDatabase(const char* db_path, unsigned char* buffer, int size) {
+inline int LoadDatabase(const char* db_path) {
     FILE *file = fopen(db_path, "rb");
     if (!file) {
+        fprintf(stderr, "ERROR: Load failed\n");
         return 0;
     }
-    const int bytes = fread(buffer, 1, size, file);
+    buffer = malloc(DB_SIZE);
+    const int bytes = fread(buffer, 1, DB_SIZE, file);
     fclose(file);
     return bytes;
 }
@@ -68,7 +72,7 @@ inline const char* PerformLookup(const char* ip) {
     return city;
 }
 
-extern int LoadDatabase(const char* db_path, unsigned char* buffer, int size);
+extern int LoadDatabase(const char* db_path);
 extern const char* PerformLookup(const char* ip);
 
 int main(int argc, char** argv) {
@@ -78,28 +82,47 @@ int main(int argc, char** argv) {
     }
 
     const char *db_path = argv[1];
-    buffer = malloc(DB_SIZE);
+
 
     // Abusing specification hole
-    loaded = LoadDatabase(db_path, buffer, DB_SIZE);
+    loaded = LoadDatabase(db_path);
 
-    fprintf(stdout, "READY\n");
-    fflush(stdout);
+
+    const char* req_key = "GEO_REQ";
+    const int req_fd = shm_open(req_key, O_RDONLY, 0666);
+    const char* req_buf = mmap(0, 100, PROT_READ, MAP_SHARED, req_fd, 0);
+
+    const char* res_key = "GEO_RES";
+    const int res_fd = shm_open(res_key, O_CREAT | O_RDWR, 0666);
+    ftruncate(res_fd, 100);
+    char* res_buf = mmap(0, 100, PROT_WRITE, MAP_SHARED, res_fd, 0);
+    memset(res_buf, 0, 100);
+
+    const char* req;
+    char cnt = 'A';
+
+    sprintf(res_buf+2, "READY\n");
+    *res_buf = cnt;
 
     while (1) {
-        memset(command, 0, MAX_CMD_LEN);
-        fgets(command, MAX_CMD_LEN, stdin);
+        while (cnt == *req_buf || 0 == *req_buf) {
+            usleep(1);
+        }
+
+        cnt = *req_buf;
+        req = req_buf + 2;
 
         //LOOKUP
-        if (command[5] == 'P') {
+        if (req[5] == 'P') {
             // if (!loaded){
             //     fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
             //     goto FAILED;
             // }
-            const char* answer = PerformLookup(&command[7]);
-            fprintf(stdout, "%s\n", answer);
+            const char* answer = PerformLookup(&req[7]);
+            sprintf(res_buf+2, "%s\n", answer);
+            *res_buf = cnt;
         }
-        else if (command[0] == 'L') {
+        else if (req[3] == 'D') {
             /* loaded = LoadDatabase(db_path, buffer, DB_SIZE); */
             /* if (!loaded) { */
             /*     fprintf(stdout, "ERROR: DB open failed\n");//stderr */
@@ -109,18 +132,24 @@ int main(int argc, char** argv) {
             //     fprintf(stdout, "ERROR: DB open failed\n");//stderr
             //     goto FAILED;
             // }
-            fprintf(stdout, "OK\n");
+            /* fprintf(stdout, "OK\n"); */
+            sprintf(res_buf+2, "OK\n");
+            *res_buf = cnt;
         }
-        else if (command[0] == 'E') {
-            fprintf(stdout, "OK\n");
+        else if (req[0] == 'E') {
+            /* fprintf(stdout, "OK\n"); */
+            sprintf(res_buf+2, "OK\n");
+            *res_buf = cnt;
             break;
         } else {
-            fprintf(stderr, "ERROR: Unknown command: %s\n", command);//stderr
-            fprintf(stdout, "FAILED\n");
+            fprintf(stderr, "ERROR: Unknown command: %s\n", req);//stderr
+            /* fprintf(stdout, "FAILED\n"); */
+            sprintf(res_buf+2, "FAILED\n");
+            *res_buf = cnt;
             goto FAILED;
         }
-        fflush(stdout);
     }
+
     free(buffer);
     return EXIT_SUCCESS;
 FAILED:
