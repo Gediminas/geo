@@ -64,15 +64,15 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    const char* req_key = "GEO_REQ";
+    const char* req_key = "/GEO_REQ";
     const int req_fd = shm_open(req_key, O_CREAT | O_RDWR, 0666);
     ftruncate(req_fd, 100);
-    char* req_buf = mmap(0, 100, PROT_WRITE, MAP_SHARED, req_fd, 0);
+    char* req_buf = mmap(NULL, 100, PROT_WRITE, MAP_SHARED, req_fd, 0);
     memset(req_buf, 0, 100);
 
-    const char* res_key = "GEO_RES";
+    const char* res_key = "/GEO_RES";
     const int res_fd = shm_open(res_key, O_RDONLY, 0666);
-    const char* res_buf = mmap(0, 100, PROT_READ, MAP_SHARED, res_fd, 0);
+    const char* res_buf = mmap(NULL, 100, PROT_READ, MAP_SHARED, res_fd, 0);
 
     char cnt = 'A';
     const char* res;
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
     while (1) {
         while (cnt != *res_buf || 0 == *res_buf) {
-            usleep(1);
+            usleep(0);
         }
         cnt = *res_buf;
         res = res_buf + 2;

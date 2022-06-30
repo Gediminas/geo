@@ -88,14 +88,22 @@ int main(int argc, char** argv) {
     loaded = LoadDatabase(db_path);
 
 
-    const char* req_key = "GEO_REQ";
+    const char* req_key = "/GEO_REQ";
     const int req_fd = shm_open(req_key, O_RDONLY, 0666);
-    const char* req_buf = mmap(0, 100, PROT_READ, MAP_SHARED, req_fd, 0);
+    const char* req_buf = mmap(NULL, 100, PROT_READ, MAP_SHARED, req_fd, 0);
+    if (req_buf == MAP_FAILED) {
+        fprintf(stderr, "ERROR: mmap /GEO_REQ failed\n");
+        goto FAILED;
+    }
 
-    const char* res_key = "GEO_RES";
+    const char* res_key = "/GEO_RES";
     const int res_fd = shm_open(res_key, O_CREAT | O_RDWR, 0666);
     ftruncate(res_fd, 100);
-    char* res_buf = mmap(0, 100, PROT_WRITE, MAP_SHARED, res_fd, 0);
+    char* res_buf = mmap(NULL, 100, PROT_WRITE, MAP_SHARED, res_fd, 0);
+    if (res_buf == MAP_FAILED) {
+        fprintf(stderr, "ERROR: mmap /GEO_RES failed\n");
+        goto FAILED;
+    }
     memset(res_buf, 0, 100);
 
     const char* req;
@@ -106,7 +114,7 @@ int main(int argc, char** argv) {
 
     while (1) {
         while (cnt == *req_buf || 0 == *req_buf) {
-            usleep(1);
+            usleep(0);
         }
 
         cnt = *req_buf;
