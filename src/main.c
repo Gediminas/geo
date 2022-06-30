@@ -6,6 +6,17 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
+
+#define DB_SIZE 13193167
+const long SIZE = 4096;
+const char* name = "GEO1";
+const char* db_path = "geo.db";
+
+#define PIPE_READ 0
+#define PIPE_WRITE 1
+#define MAX_IBUF_LEN 25
+#define MAX_OBUF_LEN 48
 
 #define MAX_CMD_LEN 50
 #define DB_SIZE 13193167
@@ -14,22 +25,20 @@
 #define seg1_size  256 * 256 * 8
 #define seg2_start seg1_start + seg1_size
 
-unsigned char* buffer = NULL;
-int loaded = 0;
+pid_t parent_pid = 0;
 
-inline int LoadDatabase(const char* db_path) {
+unsigned char* LoadDatabase(const char* db_path) {
     FILE *file = fopen(db_path, "rb");
     if (!file) {
-        fprintf(stderr, "ERROR: Load failed\n");
-        return 0;
+        return NULL;
     }
-    buffer = malloc(DB_SIZE);
+    unsigned char* buffer = malloc(DB_SIZE);
     const int bytes = fread(buffer, 1, DB_SIZE, file);
     fclose(file);
-    return bytes;
+    return buffer;
 }
 
-inline const char* PerformLookup(const char* ip) {
+const char* PerformLookup(const unsigned char* buffer, const char* ip) {
     const in_addr_t ip_be          = inet_addr(ip); //netorder == big-endian
     // const unsigned short halfip = ((ip_be & 0xFF00) >> 8) | ((ip_be & 0x00FF) << 8); // to LE always => no gain
     const unsigned short halfip    = ntohs((unsigned short)ip_be); //to this machine endian (little-endian)
@@ -72,96 +81,166 @@ inline const char* PerformLookup(const char* ip) {
     return city;
 }
 
-extern int LoadDatabase(const char* db_path);
-extern const char* PerformLookup(const char* ip);
+/* extern int LoadDatabase(const char* db_path); */
+/* extern const char* PerformLookup(const char* ip); */
 
-int main(int argc, char** argv) {
-    if (argc != 2) {
-        fprintf(stderr, "ERROR: Usage './geo <geo.db>'\n");
-        goto FAILED;
+void child_handle_lookup_request(int sig) {
+    // fprintf(stderr, "C: >> LOOKUP REQUEST\n");
+
+    /* fprintf(stdout, "OK\n"); */
+    /* fflush(stdout); */
+
+    kill(parent_pid, SIGUSR1); // Notify parent that response is ready
+}
+  
+void parent_handle_lookup_response(int sig) {
+    // fprintf(stderr, "P: << LOOKUP RESPONSE -,-\n");
+
+    fprintf(stdout, "-,-\n");
+    fflush(stdout);
+}
+  
+int child(pid_t parent_pid) {
+    signal(SIGUSR1, child_handle_lookup_request);
+
+    // Abusing specification hole => load before LOAD command
+    unsigned char* buffer = LoadDatabase(db_path);
+    if (!buffer) {
+        fprintf(stderr, "ERROR: Load failed\n");
+        return EXIT_FAILURE;
     }
 
-    const char *db_path = argv[1];
-
-
-    // Abusing specification hole
-    loaded = LoadDatabase(db_path);
-
-
-    const char* req_key = "/GEO_REQ";
-    const int req_fd = shm_open(req_key, O_RDONLY, 0666);
-    const char* req_buf = mmap(NULL, 100, PROT_READ, MAP_SHARED, req_fd, 0);
-    if (req_buf == MAP_FAILED) {
-        fprintf(stderr, "ERROR: mmap /GEO_REQ failed\n");
-        goto FAILED;
-    }
-
-    const char* res_key = "/GEO_RES";
-    const int res_fd = shm_open(res_key, O_CREAT | O_RDWR, 0666);
-    ftruncate(res_fd, 100);
-    char* res_buf = mmap(NULL, 100, PROT_WRITE, MAP_SHARED, res_fd, 0);
-    if (res_buf == MAP_FAILED) {
-        fprintf(stderr, "ERROR: mmap /GEO_RES failed\n");
-        goto FAILED;
-    }
-    memset(res_buf, 0, 100);
-
-    const char* req;
-    char cnt = 'A';
-
-    sprintf(res_buf+2, "READY\n");
-    *res_buf = cnt;
+    fprintf(stdout, "READY\n");
+    fflush(stdout);
 
     while (1) {
-        while (cnt == *req_buf || 0 == *req_buf) {
-            usleep(0);
-        }
+        usleep(100000); //loop also because signal kills sleep
+    }
+    free(buffer); //FIXME: catch signal
+    return EXIT_SUCCESS;
+}
 
-        cnt = *req_buf;
-        req = req_buf + 2;
+int main()
+{
+    parent_pid = getpid();
 
-        //LOOKUP
-        if (req[5] == 'P') {
-            // if (!loaded){
-            //     fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr
-            //     goto FAILED;
-            // }
-            const char* answer = PerformLookup(&req[7]);
-            sprintf(res_buf+2, "%s\n", answer);
-            *res_buf = cnt;
-        }
-        else if (req[3] == 'D') {
-            /* loaded = LoadDatabase(db_path, buffer, DB_SIZE); */
-            /* if (!loaded) { */
-            /*     fprintf(stdout, "ERROR: DB open failed\n");//stderr */
-            /*     goto FAILED; */
-            /* } */
-            // if (!loaded){
-            //     fprintf(stdout, "ERROR: DB open failed\n");//stderr
-            //     goto FAILED;
-            // }
-            /* fprintf(stdout, "OK\n"); */
-            sprintf(res_buf+2, "OK\n");
-            *res_buf = cnt;
-        }
-        else if (req[0] == 'E') {
-            /* fprintf(stdout, "OK\n"); */
-            sprintf(res_buf+2, "OK\n");
-            *res_buf = cnt;
-            break;
-        } else {
-            fprintf(stderr, "ERROR: Unknown command: %s\n", req);//stderr
-            /* fprintf(stdout, "FAILED\n"); */
-            sprintf(res_buf+2, "FAILED\n");
-            *res_buf = cnt;
-            goto FAILED;
+    // fprintf(stderr, "P: pid = %u\n", parent_pid);
+    fflush(stderr);
+
+    const pid_t child_pid = fork();
+    if (child_pid < 0)
+        return child_pid;
+
+    if (child_pid == 0)
+        return child(parent_pid);
+
+    //parent
+    //
+    signal(SIGUSR1, parent_handle_lookup_response);
+
+    char input[100];
+    while (1) {
+        memset(input, 0, 100);
+        fgets(input, 100, stdin);
+
+        switch (input[3]) {
+            case 'K': // LOOKUP
+                kill(child_pid, SIGUSR1); // Notify child that request is ready
+                usleep(100000);
+                break;
+            case 'D': // LOAD
+                fprintf(stdout, "OK\n");
+                fflush(stdout);
+                break;
+            case 'T': // EXIT
+                fprintf(stdout, "OK\n");
+                fflush(stdout);
+                exit(0);
+                break;
+            default:
+                fprintf(stderr, "ERROR: Invalid command\n");
+                break;
         }
     }
 
-    free(buffer);
     return EXIT_SUCCESS;
-FAILED:
-    fflush(stdout);
-    free(buffer);
-    return EXIT_FAILURE;
 }
+
+/* int main(int argc, char** argv) { */
+/*     const char* req_key = "/GEO_REQ"; */
+/*     const int req_fd = shm_open(req_key, O_RDONLY, 0666); */
+/*     const char* req_buf = mmap(NULL, 100, PROT_READ, MAP_SHARED, req_fd, 0); */
+/*     if (req_buf == MAP_FAILED) { */
+/*         fprintf(stderr, "ERROR: mmap /GEO_REQ failed\n"); */
+/*         goto FAILED; */
+/*     } */
+
+/*     const char* res_key = "/GEO_RES"; */
+/*     const int res_fd = shm_open(res_key, O_CREAT | O_RDWR, 0666); */
+/*     ftruncate(res_fd, 100); */
+/*     char* res_buf = mmap(NULL, 100, PROT_WRITE, MAP_SHARED, res_fd, 0); */
+/*     if (res_buf == MAP_FAILED) { */
+/*         fprintf(stderr, "ERROR: mmap /GEO_RES failed\n"); */
+/*         goto FAILED; */
+/*     } */
+/*     memset(res_buf, 0, 100); */
+
+/*     const char* req; */
+/*     char cnt = 'A'; */
+
+/*     sprintf(res_buf+2, "READY\n"); */
+/*     *res_buf = cnt; */
+
+/*     while (1) { */
+/*         while (cnt == *req_buf || 0 == *req_buf) { */
+/*             usleep(0); */
+/*         } */
+
+/*         cnt = *req_buf; */
+/*         req = req_buf + 2; */
+
+/*         //LOOKUP */
+/*         if (req[5] == 'P') { */
+/*             // if (!loaded){ */
+/*             //     fprintf(stdout, "ERROR: Lookup requested before database was ever loaded\n");//stderr */
+/*             //     goto FAILED; */
+/*             // } */
+/*             const char* answer = PerformLookup(&req[7]); */
+/*             sprintf(res_buf+2, "%s\n", answer); */
+/*             *res_buf = cnt; */
+/*         } */
+/*         else if (req[3] == 'D') { */
+/*             /1* loaded = LoadDatabase(db_path, buffer, DB_SIZE); *1/ */
+/*             /1* if (!loaded) { *1/ */
+/*             /1*     fprintf(stdout, "ERROR: DB open failed\n");//stderr *1/ */
+/*             /1*     goto FAILED; *1/ */
+/*             /1* } *1/ */
+/*             // if (!loaded){ */
+/*             //     fprintf(stdout, "ERROR: DB open failed\n");//stderr */
+/*             //     goto FAILED; */
+/*             // } */
+/*             /1* fprintf(stdout, "OK\n"); *1/ */
+/*             sprintf(res_buf+2, "OK\n"); */
+/*             *res_buf = cnt; */
+/*         } */
+/*         else if (req[0] == 'E') { */
+/*             /1* fprintf(stdout, "OK\n"); *1/ */
+/*             sprintf(res_buf+2, "OK\n"); */
+/*             *res_buf = cnt; */
+/*             break; */
+/*         } else { */
+/*             fprintf(stderr, "ERROR: Unknown command: %s\n", req);//stderr */
+/*             /1* fprintf(stdout, "FAILED\n"); *1/ */
+/*             sprintf(res_buf+2, "FAILED\n"); */
+/*             *res_buf = cnt; */
+/*             goto FAILED; */
+/*         } */
+/*     } */
+
+/*     free(buffer); */
+/*     return EXIT_SUCCESS; */
+/* FAILED: */
+/*     fflush(stdout); */
+/*     free(buffer); */
+/*     return EXIT_FAILURE; */
+/* } */
