@@ -32,8 +32,8 @@ unsigned char* LoadDatabase(const char* db_path) {
     return buffer;
 }
 
-const char* PerformLookup(const unsigned char* buffer, const in_addr_t ip) {
-    // const unsigned short halfip = ((ip_be & 0xFF00) >> 8) | ((ip_be & 0x00FF) << 8); // to LE always => no gain
+void PerformLookup(const unsigned char* buffer, const in_addr_t ip) {
+    // const unsigned short halfip = ((ip & 0xFF00) >> 8) | ((ip & 0x00FF) << 8); // to LE always => no gain
     const unsigned short halfip    = ntohs((unsigned short)ip); //to this machine endian (little-endian)
     const unsigned char ip_octet3  = *(((const unsigned char*)&ip)+2);
 
@@ -71,11 +71,14 @@ const char* PerformLookup(const unsigned char* buffer, const in_addr_t ip) {
     const unsigned long seg3_offset = seg3_value >> 8;
     const unsigned long seg3_addr = seg3_start + seg3_offset;
     const char* city = (const char*) &buffer[seg3_addr];
-    return city;
+
+    fprintf(stdout, city);
+    fprintf(stdout, "\n");
+    fflush_unlocked(stdout);
 }
 
 extern unsigned char* LoadDatabase(const char* db_path);
-extern const char* PerformLookup(const unsigned char* buffer, const in_addr_t ip);
+extern void PerformLookup(const unsigned char* buffer, const in_addr_t ip);
 
 int parent() {
     mkfifo(fifo_name, 0666);
@@ -128,8 +131,7 @@ int child() {
     in_addr_t ip;
     while (1) {
         read(fd, &ip, 4);
-        fprintf(stdout, "%s\n", PerformLookup(buffer, ip));
-        fflush_unlocked(stdout);
+        PerformLookup(buffer, ip);
     }
 
     // free(buffer); //TODO: cleanup in signal-trap maybe / memory leaks!!!!
