@@ -1,3 +1,4 @@
+#define  _CRT_DISABLE_PERFCRIT_LOCKS 1
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
